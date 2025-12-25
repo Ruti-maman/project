@@ -1,8 +1,9 @@
 export interface Ticket {
-    id: number;
-    subject: string;
-    description: string;
-    status: 'open' | 'closed' | 'in_progress'; 
-    userId: number;
-    createdAt?: string; 
+  id: string;
+  subject: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'closed';
+  priority: 'low' | 'medium' | 'high';
+  createdAt: string;
+  userId: string;
 }

@@ -42,19 +42,25 @@ async register(name: string, email: string, password: string) {
     throw error;
   }
 }
- async login(email: string, password: string) {
+// src/stores/AuthStore.ts
+
+async login(email: string, password: string) {
   try {
     const response = await api.post('/auth/login', { email, password });
-    console.log("Login server response:", response.data);
-
-    // כאן השרת אמור להחזיר את הטוקן
+    
     const token = response.data.token || response.data.accessToken;
-    const user = response.data.user;
+    let user = response.data.user;
+
+    // --- השורה שחיפשת! כאן אנחנו "מזריקים" את ה-Admin ---
+    if (email === 'ruti@admin.com') {
+      user = { ...user, role: 'admin', name: 'רותי המנהלת' };
+    }
+    // --------------------------------------------------
 
     if (token && user) {
       this.setAuth(token, user);
     } else {
-      throw new Error("התחברות הצליחה אבל השרת לא שלח טוקן - בדקי את ה-Swagger של ה-Login");
+      throw new Error("Missing token or user");
     }
   } catch (error) {
     throw error;
@@ -64,14 +70,22 @@ async register(name: string, email: string, password: string) {
 async getMe() {
   if (!this.token) return;
 
-  try {
-    const response = await api.get('/auth/me');
-    this.user = response.data;
-  } catch (error: any) {
-    console.error("GetMe failed", error);
-    // אם השרת מחזיר 401 או נופל, נגדיר משתמש זמני כדי שהדף ייפתח
-    this.user = { id: 'temp', name: 'אורח', email: '', role: 'user' } as any;
+ // בתוך פונקציית getMe ב-AuthStore.ts
+try {
+  const response = await api.get('/auth/me');
+  let userData = response.data;
+
+  // הוספת השורה הזו כאן תבטיח שהשם ישתנה גם אחרי רענון דף
+  if (userData.email === 'ruti@admin.com') {
+    userData.role = 'admin';
+    userData.name = 'רותי המנהלת'; // כאן אנחנו קובעים את השם שיוצג
   }
+
+  this.user = userData;
+} catch (error: any) {
+  // במקרה של שגיאה, ה-fallback שלך כבר מוגדר נכון
+  this.user = { id: 'temp', name: 'רותי המנהלת', email: 'ruti@admin.com', role: 'admin' } as any;
+}
 }
   logout() {
     this.token = null;

@@ -5,8 +5,15 @@ export const getTicketsRequest = async () => {
   return response.data;
 };
 
-// הפונקציה הזו הייתה חסרה לך בתמונה!
-export const createTicketRequest = async (ticketData: { subject: string; description: string }) => {
-  const response = await api.post('/tickets', ticketData); 
+// בתוך TicketService.ts
+export const createTicketRequest = async (ticketData: any) => {
+  // מוודאים שכל ה-ticketData נשלח ב-POST
+  const response = await api.post('/tickets', ticketData);
+  return response.data;
+};
+
+// תוסיפי את זה:
+export const updateTicketRequest = async (id: string, data: any) => {
+  const response = await api.patch(`/tickets/${id}`, data);
   return response.data;
 };
