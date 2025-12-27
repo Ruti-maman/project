@@ -1,12 +1,12 @@
-import api from './api';
+import api from "./api";
 
 export const getUsersRequest = async () => {
-  const response = await api.get('/users');
+  const response = await api.get("/users");
   return response.data;
 };
 
 export const createUserRequest = async (userData: any) => {
-  const response = await api.post('/users', userData);
+  const response = await api.post("/users", userData);
   return response.data;
 };
 

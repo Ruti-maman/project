@@ -1,14 +1,14 @@
-import api from './api';
+import api from "./api";
 
 export const getTicketsRequest = async () => {
-  const response = await api.get('/tickets');
+  const response = await api.get("/tickets");
   return response.data;
 };
 
 // בתוך TicketService.ts
 export const createTicketRequest = async (ticketData: any) => {
   // מוודאים שכל ה-ticketData נשלח ב-POST
-  const response = await api.post('/tickets', ticketData);
+  const response = await api.post("/tickets", ticketData);
   return response.data;
 };
 
