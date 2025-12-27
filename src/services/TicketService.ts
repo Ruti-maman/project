@@ -17,3 +17,18 @@ export const updateTicketRequest = async (id: string, data: any) => {
   const response = await api.patch(`/tickets/${id}`, data);
   return response.data;
 };
+
+export const getTicketRequest = async (id: string) => {
+  const response = await api.get(`/tickets/${id}`);
+  return response.data;
+};
+
+export const getCommentsRequest = async (ticketId: string) => {
+  const response = await api.get(`/tickets/${ticketId}/comments`);
+  return response.data;
+};
+
+export const postCommentRequest = async (ticketId: string, body: any) => {
+  const response = await api.post(`/tickets/${ticketId}/comments`, body);
+  return response.data;
+};

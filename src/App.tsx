@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
-import { AppRoutes } from './routes/AppRoutes'; // תיקון הנתיב ל-routes
-import { authStore } from './stores/AuthStore';
+import {AppRoutes}  from './routes/AppRoutes'; // תיקון הנתיב ל-routes
+import  authStore from './stores/AuthStore';
 import { observer } from 'mobx-react-lite';
 
 const App = observer(() => {

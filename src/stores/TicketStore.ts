@@ -1,86 +1,70 @@
 import { makeAutoObservable, runInAction } from "mobx";
-import {
-  getTicketsRequest,
-  createTicketRequest,
-  updateTicketRequest // ודאי שאת מוסיפה פונקציה כזו ב-TicketService
-} from "../services/TicketService";
-import { Ticket } from "../types/ticket"; // ודאי שהנתיב נכון למיקום הקובץ
+import api from "../services/api";
 
 class TicketStore {
-  tickets: Ticket[] = [];
-  isLoading = false;
+    tickets: any[] = [];
+    loading = false;
+    error: string | null = null;
 
-  constructor() {
-    makeAutoObservable(this);
-  }
+    constructor() {
+        makeAutoObservable(this);
+    }
 
-// TicketStore.ts
-
-async fetchTickets() {
-  this.isLoading = true;
-  try {
-    // אם המשתמש הוא אדמין, אנחנו רוצים נתיב שמביא את הכל
-    // בדקי ב-Swagger אם קיים נתיב כזה, למשל '/tickets' למנהל מחזיר הכל?
-    // אם לא, נסי להוסיף פרמטר (אם השרת תומך):
-    const data = await getTicketsRequest(); 
-    
-    runInAction(() => {
-      this.tickets = data;
-    });
-  } catch (error) {
-    console.error("נכשלה הבאת הקריאות", error);
-  } finally {
-    runInAction(() => {
-      this.isLoading = false;
-    });
-  }
-}
-
-// בתוך TicketStore.ts
-// src/stores/TicketStore.ts
-
-async createTicket(ticketData: { subject: string, description: string, priority: string }) {
-  try {
-    // תרגום העדיפות למזהה שהשרת מכיר (לפי ה-Swagger)
-    const priorityMap: Record<string, number> = {
-      'low': 1,
-      'medium': 2,
-      'high': 3
-    };
-
-    const finalData = {
-      subject: ticketData.subject,
-      description: ticketData.description,
-      priority_id: priorityMap[ticketData.priority] || 1 // שולחים priority_id במקום priority
-    };
-
-    console.log("שולח לשרת נתונים מתורגמים:", finalData);
-    
-    await createTicketRequest(finalData); 
-    await this.fetchTickets(); 
-  } catch (error) {
-    console.error("שגיאה ביצירת קריאה", error);
-  }
-}
-
-  // פונקציה חדשה שחשובה מאוד ל-README: עדכון סטטוס
-async updateStatus(id: string, status: string) {
-  try {
-    await updateTicketRequest(id, { status }); 
-    runInAction(() => {
-      // עדכון המערך בצורה ש-React בטוח יזהה
-      this.tickets = this.tickets.map((t: any) => {
-        // בודק גם id וגם _id וגם הופך למחרוזת להשוואה בטוחה
-        if (String(t.id) === String(id) || String(t._id) === String(id)) {
-          return { ...t, status: status };
+    async fetchTickets(params?: Record<string, any>) {
+        this.loading = true;
+        this.error = null;
+        try {
+            console.log('TicketStore.fetchTickets params:', params);
+            const response = await api.get('/tickets', { params });
+            console.log('TicketStore.fetchTickets response.data:', response.data);
+            let data = response.data?.data ?? response.data;
+            if (Array.isArray(data)) {
+                // נרמל שדות נפוצים כדי שה־UI יתאים ללא תלות בשמות השדות מה־backend
+                data = data.map((t: any) => {
+                    const normalized: any = { ...t };
+                    // id, subject, description — נשאיר
+                    // priority_id
+                    normalized.priority_id = Number(t.priority_id ?? t.priority ?? t.priorityId ?? t.priority_id ?? 0) || undefined;
+                    // status_id
+                    normalized.status_id = Number(t.status_id ?? t.status ?? t.statusId ?? 0) || undefined;
+                    // user_id (creator)
+                    normalized.user_id = t.user_id ?? t.user?.id ?? t.created_by ?? t.created_by_id ?? t.owner_id ?? t.author_id ?? t.author?.id ?? undefined;
+                    // agent_id
+                    normalized.agent_id = t.agent_id ?? t.agent?.id ?? t.assigned_to ?? t.assignee_id ?? undefined;
+                    return normalized;
+                });
+            }
+            runInAction(() => { this.tickets = Array.isArray(data) ? data : []; this.loading = false; });
+        } catch (err: any) {
+            runInAction(() => { this.error = err?.response?.data?.message ?? err?.message ?? 'Fetch error'; this.loading = false; });
+            console.error("Fetch Error:", err);
         }
-        return t;
-      });
-    });
-  } catch (error) {
-    console.error("שגיאה בעדכון הסטטוס", error);
-  }
-}
-}
+    }
 
-export const ticketStore = new TicketStore();
+    async createTicket(subject: string, priorityId: string | number) {
+        try {
+            const response = await api.post('/tickets', {
+                subject,
+                description: "פנייה מהממשק",
+                priority_id: Number(priorityId),
+                // also send alternate field names in case backend expects them
+                priority: Number(priorityId),
+                priorityId: Number(priorityId),
+                status_id: 1,
+                status: 1
+            });
+            const created = response.data?.data ?? response.data;
+            runInAction(() => {
+                if (created) this.tickets.unshift(created);
+            });
+            // refresh list from server to ensure correct fields
+            await this.fetchTickets();
+            return created;
+        } catch (err: any) {
+            console.error("Create Error:", err);
+            runInAction(() => { this.error = err?.response?.data?.message ?? err?.message ?? 'Create error'; });
+            return null;
+        }
+    }
+}
+export default new TicketStore();
