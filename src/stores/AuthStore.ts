@@ -1,132 +1,130 @@
 import { makeAutoObservable, runInAction } from "mobx";
-import api from "../services/api";
+import {
+  loginRequest,
+  registerRequest,
+  getMeRequest,
+} from "../services/AuthService";
 
 class AuthStore {
   user: any = null;
-  token: string | null = localStorage.getItem("token");
-  isAuthenticated = !!localStorage.getItem("token");
-  isLoading = true;
-  loading = false;
-  error: string | null = null;
+  isAuthenticated: boolean = false;
+  loading: boolean = false;
 
   constructor() {
     makeAutoObservable(this);
-    this.init();
-  }
-
-  async init() {
-    if (this.token) {
-      api.defaults.headers.common["Authorization"] = `Bearer ${this.token}`;
-      try {
-        await this.getMe();
-      } catch (e) {
-        // אם ה־token לא תקין - ננקה ונמשיך
-        this.logout();
-      }
-    }
-    runInAction(() => {
-      this.isLoading = false;
-    });
-  }
-
-  async setAuth(data: any) {
-    const token = data?.token ?? data?.data?.token ?? null;
-    const user = data?.user ?? data?.data?.user ?? null;
-    if (!token) return false;
-    localStorage.setItem("token", token);
-    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    runInAction(() => {
-      this.token = token;
-      this.user = user;
+    const token = localStorage.getItem("token");
+    if (token) {
       this.isAuthenticated = true;
-    });
-    return true;
-  }
-
-  getRedirectPath() {
-    const role = this.user?.role;
-    if (role === "admin") return "/admin";
-    if (role === "agent") return "/agent";
-    return "/home";
-  }
-
-  async login(email: string, password: string) {
-    this.loading = true;
-    this.error = null;
-    try {
-      const res = await api.post("/auth/login", { email, password });
-      const ok = await this.setAuth(res.data);
-      // אם קיבלנו טוקן אך לא קיבלנו פרטי משתמש מלאים, נבקש /auth/me
-      if (ok && !this.user) {
-        await this.getMe();
-      }
-      this.loading = false;
-      return !!ok;
-    } catch (err: any) {
-      runInAction(() => {
-        this.error =
-          err?.response?.data?.message ?? err?.message ?? "Login failed";
-        this.loading = false;
-      });
-      throw err;
+      this.fetchMe();
     }
   }
 
-  async register(name: string, email: string, password: string) {
-    this.loading = true;
-    this.error = null;
+  async fetchMe() {
     try {
-      const res = await api.post("/auth/register", {
-        name,
-        email,
-        password,
-        role: "customer",
+      const userData = await getMeRequest();
+      runInAction(() => {
+        this.user = userData;
+        this.isAuthenticated = true;
       });
-      const ok = await this.setAuth(res.data);
-      if (ok && !this.user) {
-        await this.getMe();
-      }
-      // אם השרת לא החזיר טוקן, ננסה להתחבר מיד
-      if (!ok) {
-        const loginOk = await this.login(email, password).catch(() => false);
+    } catch (error) {
+      console.error("Failed to fetch user details", error);
+    }
+  }
+
+  async login(credentials: { email: string; password: string }) {
+    this.loading = true;
+    try {
+      const data = await loginRequest(credentials);
+      const token = data.token || data.access_token;
+
+      if (!token) {
+        alert("שגיאה: השרת לא החזיר טוקן.");
         runInAction(() => {
           this.loading = false;
         });
-        return !!loginOk;
+        return;
       }
+
+      runInAction(() => {
+        localStorage.setItem("token", token);
+        this.isAuthenticated = true;
+        if (data.user) this.user = data.user;
+        else this.fetchMe();
+        this.loading = false;
+      });
+      return data; // מחזירים את המידע כדי שנדע שהצליח
+    } catch (error: any) {
       runInAction(() => {
         this.loading = false;
       });
-      return true;
-    } catch (err: any) {
-      runInAction(() => {
-        this.error =
-          err?.response?.data?.message ?? err?.message ?? "Register failed";
-        this.loading = false;
-      });
-      return false;
+      const message = error.response?.data?.message || "שגיאה לא ידועה";
+      alert(`נכשל בהתחברות: ${message}`);
+      throw error;
     }
   }
 
-  async getMe() {
+  // --- הפונקציה שמתקנת את הבעיה שלך ---
+  async register(userData: {
+    email: string;
+    firstName: string;
+    password: string;
+  }) {
+    this.loading = true;
     try {
-      const res = await api.get("/auth/me");
-      const user = res.data?.data ?? res.data;
+      // 1. מבצעים הרשמה
+      const data = await registerRequest(userData);
+
+      // 2. בודקים: האם קיבלנו מפתח כניסה?
+      let token = data.token || data.access_token;
+
+      // 3. אם לא קיבלנו טוקן - נעשה לוגין אוטומטי בשבילך!
+      if (!token) {
+        console.log("Registration successful, performing auto-login...");
+        // אנחנו קוראים לפונקציית הלוגין שלנו עם הסיסמה שהמשתמש הרגע הזין
+        const loginResponse = await loginRequest({
+          email: userData.email,
+          password: userData.password,
+        });
+        token = loginResponse.token || loginResponse.access_token;
+      }
+
+      // 4. שמירת הנתונים וכניסה למערכת
       runInAction(() => {
-        this.user = user;
+        if (token) {
+          localStorage.setItem("token", token);
+          this.isAuthenticated = true; // זה הדבר הכי חשוב!
+
+          // משיכת פרטי משתמש אם חסרים
+          if (data.user) this.user = data.user;
+          else this.fetchMe();
+        }
+        this.loading = false;
       });
-    } catch {
-      this.logout();
+    } catch (error: any) {
+      runInAction(() => {
+        this.loading = false;
+      });
+      const serverMsg = error.response?.data?.message;
+      if (serverMsg) {
+        alert(
+          "ההרשמה נכשלה: " +
+            (Array.isArray(serverMsg) ? serverMsg.join("\n") : serverMsg)
+        );
+      } else {
+        alert("שגיאה בהרשמה.");
+      }
+      throw error;
     }
   }
 
   logout() {
+    localStorage.removeItem("token");
     runInAction(() => {
-      localStorage.removeItem("token");
-      delete api.defaults.headers.common["Authorization"];
       this.user = null;
       this.isAuthenticated = false;
     });
   }
 }
-export default new AuthStore();
+
+const authStore = new AuthStore();
+export default authStore;

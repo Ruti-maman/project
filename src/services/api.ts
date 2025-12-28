@@ -1,33 +1,34 @@
-import axios from 'axios';
+import axios from "axios";
 
 const api = axios.create({
-    baseURL: 'http://localhost:4000',
+  baseURL: "http://localhost:4000",
 });
 
-// התיקון הסופי: Interceptor שמושך את הטוקן מהזיכרון בכל שניה ושניה
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
+// הוספת הטוקן לכל בקשה
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("token");
     if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
-}, (error) => {
+  },
+  (error) => {
     return Promise.reject(error);
-});
+  }
+);
 
-// אם מקבלים 401 (לא מורשה), מנקים הכל וחוזרים ללוגין בצורה מסודרת
+// טיפול בשגיאות (בלי לזרוק אותך החוצה באלימות)
 api.interceptors.response.use(
-    (response) => response,
-    (error) => {
-        if (error.response && error.response.status === 401) {
-            localStorage.removeItem('token');
-            // רק אם אנחנו לא כבר בדף לוגין, תעביר אותנו לשם
-            if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
-            }
-        }
-        return Promise.reject(error);
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      console.error("Token expired or invalid - logging out");
+      localStorage.removeItem("token");
+      // כאן ביטלנו את הריענון האוטומטי כדי למנוע לופים
     }
+    return Promise.reject(error);
+  }
 );
 
 export default api;

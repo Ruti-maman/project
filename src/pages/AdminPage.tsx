@@ -1,269 +1,320 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { observer } from "mobx-react-lite";
 import ticketStore from "../stores/TicketStore";
-import authStore from "../stores/AuthStore";
-import { getUsersRequest } from "../services/UserService";
-import { useNavigate } from "react-router-dom";
 import {
-  updateTicketRequest,
-  postCommentRequest,
+  createStatusRequest,
+  createPriorityRequest,
+  createUserRequest,
 } from "../services/TicketService";
-import adminPageStyles from "../styles/adminPageStyles";
 
 const AdminPage: React.FC = observer(() => {
   const navigate = useNavigate();
-  const [agents, setAgents] = useState<Array<{ id: number; name: string }>>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [priorityFilter, setPriorityFilter] = useState<string>("");
-  const [agentFilter, setAgentFilter] = useState<string>("");
-  const [search, setSearch] = useState<string>("");
-  const [commentInputs, setCommentInputs] = useState<Record<string, string>>(
-    {}
-  );
+
+  // --- התיקון שלך: role מתחיל כ-agent באופן אוטומטי ---
+  const [userForm, setUserForm] = useState({
+    firstName: "",
+    email: "",
+    password: "",
+    role: "agent",
+  });
+  const [newStatus, setNewStatus] = useState("");
+  const [newPriority, setNewPriority] = useState("");
 
   useEffect(() => {
-    ticketStore.fetchTickets();
-    (async () => {
-      try {
-        const res = await getUsersRequest();
-        const data = (res as any).data ?? res;
-        const list = Array.isArray(data) ? data : [];
-        setAgents(
-          list
-            .filter(
-              (u: any) => u.role === "agent" || u.is_agent || u.type === "agent"
-            )
-            .map((u: any) => ({
-              id: u.id,
-              name: u.name || u.fullname || u.email,
-            }))
-        );
-      } catch (err) {
-        console.warn("Could not load agents", err);
-      }
-    })();
+    ticketStore.fetchAllData();
   }, []);
 
-  const refresh = async () => {
-    await ticketStore.fetchTickets();
-  };
-
-  const onChangeStatus = async (id: string, val: string) => {
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      await updateTicketRequest(id, { status_id: Number(val) });
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      alert("שגיאה בעדכון סטטוס");
-    }
-  };
-
-  const onAssign = async (id: string, agentId: string) => {
-    try {
-      await updateTicketRequest(id, { agent_id: Number(agentId) || null });
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      alert("שגיאה בהקצאת נציג");
-    }
-  };
-
-  const onPostComment = async (id: string) => {
-    const text = commentInputs[id];
-    if (!text || text.trim() === "") return;
-    try {
-      await postCommentRequest(id, {
-        body: text.trim(),
-        author_id: authStore.user?.id,
+      await createUserRequest({
+        email: userForm.email,
+        name: userForm.firstName,
+        username: userForm.email,
+        password: userForm.password,
+        role: userForm.role,
       });
-      setCommentInputs((prev) => ({ ...prev, [id]: "" }));
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      alert("שגיאה בשליחת תגובה");
+      alert(`🎉 המשתמש ${userForm.firstName} נוצר בהצלחה!`);
+      // מאפסים את הטופס ושומרים על agent כברירת מחדל
+      setUserForm({ firstName: "", email: "", password: "", role: "agent" });
+      ticketStore.refreshLists();
+    } catch (error) {
+      alert("❌ שגיאה ביצירת משתמש.");
     }
   };
 
-  const filtered = ticketStore.tickets.filter((t: any) => {
-    if (statusFilter && String(t.status_id ?? t.status) !== statusFilter)
-      return false;
-    if (
-      priorityFilter &&
-      String(t.priority_id ?? t.priority) !== priorityFilter
-    )
-      return false;
-    if (agentFilter && String(t.agent_id ?? "") !== agentFilter) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      const subject = String(t.subject || "").toLowerCase();
-      const body = String(t.body || "").toLowerCase();
-      if (!subject.includes(s) && !body.includes(s)) return false;
+  const handleAddStatus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStatus.trim()) return;
+    try {
+      await createStatusRequest(newStatus);
+      setNewStatus("");
+      ticketStore.refreshLists();
+    } catch (error) {
+      alert("❌ שגיאה בהוספה.");
     }
-    return true;
-  });
+  };
+
+  const handleAddPriority = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPriority.trim()) return;
+    try {
+      await createPriorityRequest(newPriority);
+      setNewPriority("");
+      ticketStore.refreshLists();
+    } catch (error) {
+      alert("❌ שגיאה בהוספה.");
+    }
+  };
 
   return (
-    <div style={adminPageStyles.container}>
-      <div style={adminPageStyles.headerRow}>
-        <h1 style={adminPageStyles.title}>לוח בקרה למנהל</h1>
-        <button
-          style={adminPageStyles.backButton}
-          onClick={() => navigate("/")}
-        >
-          חזור
+    <div style={styles.container}>
+      <div style={styles.topBar}>
+        <button onClick={() => navigate("/home")} style={styles.backButton}>
+          ⬅️ חזרה
         </button>
+        <h1 style={styles.pageTitle}>⚙️ ניהול מערכת</h1>
       </div>
 
-      <div style={adminPageStyles.controlsWrapper}>
-        <div style={adminPageStyles.controlsRow}>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={adminPageStyles.select}
-          >
-            <option value="">כל הסטטוסים</option>
-            <option value="1">פתוח</option>
-            <option value="2">בטיפול</option>
-            <option value="3">סגור</option>
-          </select>
-
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            style={adminPageStyles.select}
-          >
-            <option value="">כל העדיפויות</option>
-            <option value="1">נמוכה</option>
-            <option value="2">בינונית</option>
-            <option value="3">גבוהה</option>
-          </select>
-
-          <select
-            value={agentFilter}
-            onChange={(e) => setAgentFilter(e.target.value)}
-            style={adminPageStyles.select}
-          >
-            <option value="">כל הנציגים</option>
-            {agents.map((a) => (
-              <option key={a.id} value={String(a.id)}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-
-          <input
-            placeholder="חפש נושא/תוכן"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={adminPageStyles.input}
-          />
-
-          <button
-            style={adminPageStyles.backButton}
-            onClick={() => {
-              setStatusFilter("");
-              setPriorityFilter("");
-              setAgentFilter("");
-              setSearch("");
-            }}
-          >
-            נקה
-          </button>
+      <div style={styles.contentGrid}>
+        <div style={styles.mainCard}>
+          <div style={styles.cardHeader}>
+            <span style={{ fontSize: "24px" }}>👤</span>
+            <h2 style={styles.cardTitle}>הוספת משתמש</h2>
+          </div>
+          <form onSubmit={handleAddUser} style={styles.form}>
+            <input
+              style={styles.input}
+              placeholder="שם מלא"
+              value={userForm.firstName}
+              onChange={(e) =>
+                setUserForm({ ...userForm, firstName: e.target.value })
+              }
+              required
+            />
+            <input
+              style={styles.input}
+              type="email"
+              placeholder="אימייל"
+              value={userForm.email}
+              onChange={(e) =>
+                setUserForm({ ...userForm, email: e.target.value })
+              }
+              required
+            />
+            <input
+              style={styles.input}
+              type="password"
+              placeholder="סיסמה"
+              value={userForm.password}
+              onChange={(e) =>
+                setUserForm({ ...userForm, password: e.target.value })
+              }
+              required
+            />
+            <select
+              style={styles.select}
+              value={userForm.role}
+              onChange={(e) =>
+                setUserForm({ ...userForm, role: e.target.value })
+              }
+            >
+              <option value="agent">נציג (Agent)</option>
+              <option value="client">לקוח (Client)</option>
+              <option value="admin">מנהל (Admin)</option>
+            </select>
+            <button type="submit" style={styles.submitButton}>
+              הוסף משתמש ➕
+            </button>
+          </form>
         </div>
-      </div>
 
-      <div style={adminPageStyles.tableWrapper}>
-        <table style={adminPageStyles.table}>
-          <thead>
-            <tr style={adminPageStyles.theadTr}>
-              <th style={adminPageStyles.theadTh}>#</th>
-              <th style={adminPageStyles.theadTh}>נושא</th>
-              <th style={adminPageStyles.theadTh}>עדיפות</th>
-              <th style={adminPageStyles.theadTh}>סטטוס</th>
-              <th style={adminPageStyles.theadTh}>הקצה</th>
-              <th style={adminPageStyles.theadTh}>תגובה</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((t: any, i: number) => (
-              <tr
-                key={t.id}
-                style={
-                  i % 2 === 0 ? adminPageStyles.rowEven : adminPageStyles.rowOdd
-                }
+        <div style={styles.sideColumn}>
+          <div style={styles.smallCard}>
+            <div style={styles.cardHeader}>
+              <span style={{ fontSize: "20px" }}>🏷️</span>
+              <h3 style={styles.smallCardTitle}>סטטוסים</h3>
+            </div>
+            <form
+              onSubmit={handleAddStatus}
+              style={{ ...styles.form, marginBottom: "15px" }}
+            >
+              <input
+                style={styles.input}
+                placeholder="חדש..."
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+              />
+              <button
+                type="submit"
+                style={{ ...styles.actionButton, background: "#a29bfe" }}
               >
-                <td style={adminPageStyles.td}>{t.id}</td>
-                <td style={adminPageStyles.td}>{t.subject}</td>
-                <td style={adminPageStyles.td}>
-                  <span
-                    style={{
-                      ...(adminPageStyles.priorityBadge as any),
-                      background:
-                        t.priority_id === 3
-                          ? "#e74c3c"
-                          : t.priority_id === 2
-                          ? "#f39c12"
-                          : "#2ecc71",
-                    }}
-                  >
-                    {t.priority_he || t.priority || t.priority_id}
-                  </span>
-                </td>
-                <td style={adminPageStyles.td}>
-                  <select
-                    value={String(t.status_id ?? (t.status || ""))}
-                    onChange={(e) =>
-                      onChangeStatus(String(t.id), e.target.value)
-                    }
-                    style={adminPageStyles.selectWide}
-                  >
-                    <option value="1">פתוח</option>
-                    <option value="2">בטיפול</option>
-                    <option value="3">סגור</option>
-                  </select>
-                </td>
-                <td style={adminPageStyles.td}>
-                  <select
-                    value={String(t.agent_id ?? "")}
-                    onChange={(e) => onAssign(String(t.id), e.target.value)}
-                    style={adminPageStyles.selectAgent}
-                  >
-                    <option value="">בחר</option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={String(a.id)}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={adminPageStyles.td}>
-                  <div style={adminPageStyles.commentRow}>
-                    <textarea
-                      placeholder="הוסף תגובה..."
-                      value={commentInputs[String(t.id)] || ""}
-                      onChange={(e) =>
-                        setCommentInputs((prev) => ({
-                          ...prev,
-                          [String(t.id)]: e.target.value,
-                        }))
-                      }
-                      style={adminPageStyles.commentArea as any}
-                    />
-                    <button
-                      onClick={() => onPostComment(String(t.id))}
-                      style={adminPageStyles.sendButton}
-                    >
-                      שלח
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                הוסף
+              </button>
+            </form>
+            <div style={styles.listContainer}>
+              {ticketStore.statuses.map((s: any) => (
+                <div key={s.id} style={styles.listItem}>
+                  <span>{s.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.smallCard}>
+            <div style={styles.cardHeader}>
+              <span style={{ fontSize: "20px" }}>⚡</span>
+              <h3 style={styles.smallCardTitle}>עדיפויות</h3>
+            </div>
+            <form
+              onSubmit={handleAddPriority}
+              style={{ ...styles.form, marginBottom: "15px" }}
+            >
+              <input
+                style={styles.input}
+                placeholder="חדש..."
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value)}
+              />
+              <button
+                type="submit"
+                style={{ ...styles.actionButton, background: "#ff7675" }}
+              >
+                הוסף
+              </button>
+            </form>
+            <div style={styles.listContainer}>
+              {ticketStore.priorities.map((p: any) => (
+                <div key={p.id} style={styles.listItem}>
+                  <span>{p.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 });
+
+const styles: any = {
+  container: {
+    minHeight: "100vh",
+    background: "#f1f2f6",
+    padding: "30px",
+    fontFamily: "Segoe UI",
+    direction: "rtl",
+  },
+  topBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    maxWidth: "1000px",
+    margin: "0 auto 30px",
+  },
+  pageTitle: { margin: 0, color: "#2d3436", fontSize: "28px" },
+  backButton: {
+    background: "white",
+    border: "none",
+    padding: "10px 20px",
+    borderRadius: "30px",
+    cursor: "pointer",
+    boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+    fontWeight: "bold",
+    color: "#636e72",
+  },
+  contentGrid: {
+    display: "flex",
+    gap: "30px",
+    maxWidth: "1000px",
+    margin: "0 auto",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+  },
+  mainCard: {
+    background: "white",
+    borderRadius: "20px",
+    padding: "30px",
+    boxShadow: "0 10px 20px rgba(0,0,0,0.05)",
+    flex: 2,
+    minWidth: "320px",
+  },
+  sideColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+    flex: 1,
+    minWidth: "300px",
+  },
+  smallCard: {
+    background: "white",
+    borderRadius: "20px",
+    padding: "20px",
+    boxShadow: "0 5px 15px rgba(0,0,0,0.05)",
+  },
+  cardHeader: {
+    display: "flex",
+    gap: "10px",
+    marginBottom: "20px",
+    alignItems: "center",
+  },
+  cardTitle: { margin: 0, fontSize: "22px", color: "#2d3436" },
+  smallCardTitle: { margin: 0, fontSize: "18px", color: "#2d3436" },
+  form: { display: "flex", flexDirection: "column", gap: "15px" },
+  input: {
+    padding: "12px",
+    borderRadius: "10px",
+    border: "1px solid #dfe6e9",
+    fontSize: "14px",
+    outline: "none",
+    background: "#f9f9f9",
+  },
+  select: {
+    padding: "12px",
+    borderRadius: "10px",
+    border: "1px solid #dfe6e9",
+    fontSize: "14px",
+    background: "white",
+  },
+  submitButton: {
+    padding: "12px",
+    background: "linear-gradient(45deg, #0984e3, #74b9ff)",
+    color: "white",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer",
+    fontWeight: "bold",
+    fontSize: "16px",
+    marginTop: "10px",
+  },
+  actionButton: {
+    padding: "10px",
+    color: "white",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+  listContainer: {
+    maxHeight: "200px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    borderTop: "1px solid #eee",
+    paddingTop: "15px",
+    marginTop: "10px",
+  },
+  listItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "10px",
+    background: "#f1f2f6",
+    borderRadius: "8px",
+    fontSize: "14px",
+    alignItems: "center",
+  },
+};
 
 export default AdminPage;

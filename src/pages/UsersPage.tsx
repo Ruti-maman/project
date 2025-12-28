@@ -1,135 +1,58 @@
-import React, { useEffect, useState } from "react";
-import {
-  getUsersRequest,
-  createUserRequest,
-  updateUserRequest,
-  deleteUserRequest,
-} from "../services/UserService";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { registerRequest } from '../services/AuthService'; // נשתמש בזה ליצירת משתמשים
+import s from '../styles/homePageStyles';
+import api from '../services/api'; // לצורך שליחה ישירה אם צריך התאמות
 
-const UsersPage = () => {
-  const [users, setUsers] = useState<any[]>([]);
-  const [newUser, setNewUser] = useState({
-    name: "",
-    email: "",
-    password: "",
-    role: "agent",
+const UsersPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+      firstName: '', email: '', password: '', role: 'client'
   });
-  const [loading, setLoading] = useState(false);
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      const res = await getUsersRequest();
-      setUsers(res.data || res);
-    } finally {
-      setLoading(false);
+        // אנחנו משתמשים בטריק: שולחים בקשה לשרת ליצירת משתמש
+        // נשתמש בנתיב המיוחד של יצירת משתמשים אם קיים, או בהרשמה הרגילה עם תוספת תפקיד
+        await api.post('/users', {
+            name: formData.firstName,
+            email: formData.email,
+            username: formData.email,
+            password: formData.password,
+            role: formData.role // כאן המנהל קובע את התפקיד!
+        });
+        
+        alert("המשתמש נוצר בהצלחה! 🎉");
+        setFormData({ firstName: '', email: '', password: '', role: 'client' });
+    } catch (error) {
+        alert("שגיאה ביצירת המשתמש. אולי האימייל תפוס?");
     }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const handleAdd = async () => {
-    if (!newUser.name || !newUser.email || !newUser.password) return;
-    setLoading(true);
-    await createUserRequest(newUser);
-    setNewUser({ name: "", email: "", password: "", role: "agent" });
-    fetchUsers();
-  };
-
-  const handleDelete = async (id: string) => {
-    setLoading(true);
-    await deleteUserRequest(id);
-    fetchUsers();
-  };
-
   return (
-    <div
-      style={{ padding: 24, direction: "rtl", maxWidth: 600, margin: "auto" }}
-    >
-      <h2>ניהול משתמשים (נציגים ומנהלים)</h2>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <input
-          value={newUser.name}
-          onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-          placeholder="שם"
-          style={{ padding: 8, borderRadius: 6, border: "1px solid #bbb" }}
-        />
-        <input
-          value={newUser.email}
-          onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-          placeholder="אימייל"
-          style={{ padding: 8, borderRadius: 6, border: "1px solid #bbb" }}
-        />
-        <input
-          value={newUser.password}
-          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-          placeholder="סיסמה"
-          type="password"
-          style={{ padding: 8, borderRadius: 6, border: "1px solid #bbb" }}
-        />
-        <select
-          value={newUser.role}
-          onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-          style={{ padding: 8, borderRadius: 6 }}
-        >
-          <option value="agent">Agent</option>
-          <option value="admin">Admin</option>
-        </select>
-        <button
-          onClick={handleAdd}
-          style={{
-            padding: 8,
-            borderRadius: 6,
-            background: "#222",
-            color: "white",
-          }}
-          disabled={loading}
-        >
-          הוסף
-        </button>
-      </div>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          background: "white",
-          borderRadius: 8,
-        }}
-      >
-        <thead>
-          <tr style={{ background: "#333", color: "white" }}>
-            <th style={{ padding: "10px" }}>שם</th>
-            <th style={{ padding: "10px" }}>אימייל</th>
-            <th style={{ padding: "10px" }}>תפקיד</th>
-            <th style={{ padding: "10px" }}>מחק</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td style={{ padding: "10px" }}>{u.name}</td>
-              <td style={{ padding: "10px" }}>{u.email}</td>
-              <td style={{ padding: "10px" }}>{u.role}</td>
-              <td style={{ padding: "10px" }}>
-                <button
-                  onClick={() => handleDelete(u.id)}
-                  style={{
-                    color: "red",
-                    border: "none",
-                    background: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  🗑️
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {loading && <div style={{ marginTop: 20 }}>טוען...</div>}
+    <div style={s.container}>
+        <button onClick={() => navigate('/home')} style={{ marginBottom: '20px', padding: '10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px' }}>⬅️ חזרה</button>
+        
+        <div style={s.createCard}>
+            <h2 style={{ textAlign: 'center', color: '#2d3436' }}>ניהול משתמשים 👥</h2>
+            <p style={{ textAlign: 'center', marginBottom: '20px' }}>הוסיפי לקוח, סוכן או מנהל חדש למערכת</p>
+            
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <input style={s.input} placeholder="שם מלא" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} required />
+                <input style={s.input} placeholder="אימייל (שם משתמש)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
+                <input style={s.input} placeholder="סיסמה" type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required />
+                
+                <label style={{ fontWeight: 'bold' }}>תפקיד:</label>
+                <select style={{ ...s.input, height: '50px' }} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                    <option value="client">לקוח (Client)</option>
+                    <option value="agent">סוכן (Agent)</option>
+                    <option value="admin">מנהל (Admin)</option>
+                </select>
+
+                <button type="submit" style={{ ...s.submitBtn, marginTop: '10px' }}>צור משתמש ➕</button>
+            </form>
+        </div>
     </div>
   );
 };
