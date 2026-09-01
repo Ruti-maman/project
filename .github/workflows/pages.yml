@@ -1,0 +1,96 @@
+name: Deploy Helpdesk client demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      # The repo has no tsconfig.json committed, so esbuild would fall back to
+      # the classic JSX transform and break any file that does not import React
+      # itself. Written here rather than added to the repo to keep the source
+      # exactly as it is - worth committing for real one day.
+      - name: Supply the missing tsconfig
+        run: |
+          cat > tsconfig.json <<'JSON'
+          {
+            "compilerOptions": {
+              "target": "ES2020",
+              "lib": ["ES2020", "DOM", "DOM.Iterable"],
+              "module": "ESNext",
+              "moduleResolution": "bundler",
+              "jsx": "react-jsx",
+              "allowSyntheticDefaultImports": true,
+              "esModuleInterop": true,
+              "resolveJsonModule": true,
+              "isolatedModules": true,
+              "skipLibCheck": true,
+              "strict": false,
+              "noEmit": true
+            },
+            "include": ["src"]
+          }
+          JSON
+
+      # The real client talks to the TypeScript API in helpdesk-api-main, which
+      # Pages cannot host. Swapping this one file leaves every component,
+      # store and service untouched. See demo/README.md.
+      - name: Use the browser-side stub instead of the live API
+        run: |
+          cp demo/api.demo.ts src/services/api.ts
+          grep -q "adapter" src/services/api.ts
+
+      # Pages serves the app from /project/, but App.tsx mounts BrowserRouter
+      # with no basename, so every <Navigate to="/login"> would leave the app
+      # entirely. BASE_URL is "/" during local dev, so this is a no-op there.
+      - name: Teach the router about the subpath
+        run: |
+          sed -i 's|<Router>|<Router basename={import.meta.env.BASE_URL}>|' src/App.tsx
+          grep -n "<Router" src/App.tsx
+
+      # vite build only, not the package script: that runs a bare `tsc` first,
+      # which type-checks the whole app and is not what publishing a demo needs.
+      - name: Build
+        run: npx vite build --base=/project/
+
+      - name: Prepare for Pages
+        run: |
+          touch dist/.nojekyll
+          # client-side routes need a fallback, or a refresh on /project/home 404s
+          cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
